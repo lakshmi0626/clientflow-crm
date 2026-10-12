@@ -186,8 +186,26 @@ const [taskPriority, setTaskPriority] = useState('All priorities')
   </div>
 }
 
+
 function Overview({ dashboard, leads, tasks, setPage, setModal, busy }) {
-  const stageData = stages.map((name, i) => ({ name, value: dashboard.pipeline?.[name] || 0, color: colors[i] }))
+  const stageData = stages.map((name, i) => ({
+    name,
+    value: dashboard.pipeline?.[name] || 0,
+    color: colors[i]
+  }))
+
+  const pendingTasks = tasks.filter(
+    task => (task.status || 'Pending') !== 'Completed'
+  ).length
+
+  const today = new Date().toISOString().slice(0, 10)
+
+  const overdueTasks = tasks.filter(task =>
+    task.dueDate &&
+    task.dueDate.slice(0, 10) < today &&
+    (task.status || 'Pending') !== 'Completed'
+  ).length
+
   const chartData = Array.from({ length: 7 }, (_, index) => {
     const date = new Date()
     date.setHours(0, 0, 0, 0)
@@ -219,6 +237,35 @@ function Overview({ dashboard, leads, tasks, setPage, setModal, busy }) {
 
 <StatCard icon={Building2} tint="blue" label="Customers" value={dashboard.totalCustomers} trend="Customers" direction="none" foot="Saved customer records"/>
       <StatCard icon={CircleDollarSign} tint="orange" label="Won revenue" value={money(dashboard.wonRevenue)} trend="Closed won" direction="none" foot="all-time"/>
+      
+  <StatCard
+    icon={ClipboardList}
+    tint="blue"
+    label="Pending follow-ups"
+    value={pendingTasks}
+    trend="Needs attention"
+    direction="none"
+    foot="Tasks not completed"
+  />
+  <StatCard
+    icon={Clock3}
+    tint="orange"
+    label="Overdue follow-ups"
+    value={overdueTasks}
+    trend="Past due date"
+    direction="none"
+    foot="Pending past-due tasks"
+  />
+
+      <StatCard
+  icon={Check}
+  tint="green"
+  label="Converted leads"
+  value={leads.filter(lead => lead.status === 'Won').length}
+  trend="Successfully won"
+  direction="none"
+  foot="Closed deals"
+/>
     </section>
     <section className="overview-grid">
       <div className="panel revenue-panel"><div className="panel-heading"><div><h2>Pipeline activity</h2><p>New leads created in the last 7 days</p></div><button className="select-like" onClick={() => setPage('Reports')}>This week <ChevronDown size={14}/></button></div><div className="chart-summary"><strong>{dashboard.totalLeads}</strong><span>Total leads in pipeline</span><span className="mini-positive"><ArrowUpRight size={14}/> Active</span></div><div className="area-chart"><ResponsiveContainer width="100%" height="100%"><AreaChart data={chartData} margin={{top:10,right:8,left:-24,bottom:0}}><defs><linearGradient id="fillActivity" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#7777f6" stopOpacity={0.22}/><stop offset="100%" stopColor="#7777f6" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="4 5" vertical={false} stroke="#edf0f6"/><XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fill:'#939bb0',fontSize:11}} dy={10}/><YAxis axisLine={false} tickLine={false} tick={{fill:'#939bb0',fontSize:11}}/><Tooltip contentStyle={{border:'1px solid #eceef5',borderRadius:12,fontSize:12}}/><Area type="monotone" dataKey="value" stroke="#7777f6" strokeWidth={2.5} fill="url(#fillActivity)" activeDot={{r:5,strokeWidth:0}}/></AreaChart></ResponsiveContainer></div><div className="chart-legend"><span><i className="legend-dot purple-dot"/> Lead activity</span><span className="chart-note">Leads grouped by creation date</span></div></div>
@@ -234,11 +281,76 @@ function StatCard({icon:Icon,tint,label,value,trend,direction,foot}) {
 
 function LeadsPage({leads,query,setQuery,filter,setFilter,setModal,setEditingLead,updateStatus,deleteLead}) {
   return <><div className="page-heading"><div><div className="eyebrow"><Target size={13}/> SALES WORKSPACE</div><h1>Leads <span className="heading-count">{leads.length}</span></h1><p>Track every prospect from first touch to closed deal.</p></div><button className="btn-primary" onClick={() => {setEditingLead(null);setModal('lead')}}><Plus size={17}/> Add lead</button></div>
-    <div className="panel table-panel"><div className="table-toolbar"><div className="table-search"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search name, company, owner..."/></div><div className="toolbar-right"><div className="filter-select"><Filter size={15}/><select value={filter} onChange={e=>setFilter(e.target.value)}><option>All stages</option>{stages.map(s=><option key={s}>{s}</option>)}</select></div><button className="btn-secondary small-btn" onClick={() => setNoticeUnavailable()}><Download size={15}/> Export</button></div></div>
+    <div className="panel table-panel"><div className="table-toolbar"><div className="table-search"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search name, company, owner..."/></div><div className="toolbar-right"><div className="filter-select"><Filter size={15}/><select value={filter} onChange={e=>setFilter(e.target.value)}><option>All stages</option>{stages.map(s=><option key={s}>{s}</option>)}</select></div>
+<button
+  className="btn-secondary small-btn"
+  onClick={() => exportLeadsCSV(leads)}
+>
+  <Download size={15} /> Export
+</button>
+</div></div>
       <LeadTable leads={leads} onStatus={updateStatus} onDelete={deleteLead} onEdit={lead => {setEditingLead(lead);setModal('lead')}}/><div className="table-bottom"><span>Showing <strong>{leads.length}</strong> leads</span><span>Changes save to the connected API</span></div></div>
   </>
 }
-function setNoticeUnavailable() { window.alert('Export is a planned enhancement for the next iteration.') }
+
+function exportLeadsCSV(leads) {
+  if (!leads || leads.length === 0) {
+    window.alert('No leads available to export.')
+    return
+  }
+
+  const columns = [
+    ['Name', 'name'],
+    ['Company', 'company'],
+    ['Email', 'email'],
+    ['Phone', 'phone'],
+    ['Source', 'source'],
+    ['Owner', 'owner'],
+    ['Stage', 'status'],
+    ['Deal Value', 'dealValue'],
+    ['Created Date', 'createdAt']
+  ]
+
+  const escapeCSV = value => {
+    const text = String(value ?? '')
+    return `"${text.replace(/"/g, '""')}"`
+  }
+
+  const csv = [
+    columns.map(([heading]) => escapeCSV(heading)).join(','),
+    ...leads.map(lead =>
+      columns
+        .map(([, key]) => {
+  let value = lead[key]
+
+  if (key === 'createdAt' && value) {
+    const date = new Date(value)
+    if (!Number.isNaN(date.getTime())) {
+      value = date.toLocaleDateString('en-IN')
+    }
+  }
+
+  return escapeCSV(value)
+})
+        .join(',')
+    )
+  ].join('\r\n')
+
+  const blob = new Blob(
+    ['\uFEFF', csv],
+    { type: 'text/csv;charset=utf-8;' }
+  )
+
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+
+  link.href = url
+  link.download = 'clientflow-leads.csv'
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
 
 function LeadTable({leads,compact=false,onStatus,onDelete,onEdit}) {
   if (!leads?.length) return <Empty text="No leads match your search. Add a lead to get started."/>

@@ -198,7 +198,13 @@ function Overview({ dashboard, leads, tasks, setPage, setModal, busy }) {
     task => (task.status || 'Pending') !== 'Completed'
   ).length
 
-  const today = new Date().toISOString().slice(0, 10)
+  const now = new Date()
+
+const today = [
+  now.getFullYear(),
+  String(now.getMonth() + 1).padStart(2, '0'),
+  String(now.getDate()).padStart(2, '0')
+].join('-')
 
   const overdueTasks = tasks.filter(task =>
     task.dueDate &&
@@ -399,6 +405,15 @@ function TasksPage({
     (a.dueDate || '').localeCompare(b.dueDate || '')
   )
 
+const today = new Date().toISOString().slice(0, 10)
+
+const isOverdue = task =>
+  task.dueDate &&
+  task.dueDate.slice(0, 10) < today &&
+  (task.status || 'Pending') !== 'Completed'
+
+const overdueCount = tasks.filter(isOverdue).length
+
   return (
     <>
       <div className="page-heading">
@@ -423,20 +438,32 @@ function TasksPage({
         </button>
       </div>
 
+
       <div className="task-stats">
         <div className="task-stat">
           <span>All tasks</span>
           <strong>{tasks.length}</strong>
         </div>
+
         <div className="task-stat">
           <span>Pending</span>
-          <strong>{tasks.filter(t => (t.status || 'Pending') !== 'Completed').length}</strong>
+          <strong>
+            {tasks.filter(t => (t.status || 'Pending') !== 'Completed').length}
+          </strong>
         </div>
+
         <div className="task-stat">
           <span>High priority</span>
           <strong>{tasks.filter(t => t.priority === 'High').length}</strong>
         </div>
+
+        <div className="task-stat">
+          <span>Overdue</span>
+          <strong>{overdueCount}</strong>
+        </div>
       </div>
+
+      
 
       <div className="panel table-panel">
         <div className="table-toolbar">
@@ -512,6 +539,15 @@ function TasksPage({
                   {task.customerName} · Assigned to {task.assignee || 'Unassigned'}
                 </span>
               </div>
+
+{isOverdue(task) && (
+  <span
+    className="status-tag overdue"
+    title="This follow-up is past its due date"
+  >
+    Overdue
+  </span>
+)}
 
               <span className={`priority-pill ${(task.priority || 'Medium').toLowerCase()}`}>
                 {task.priority || 'Medium'} priority

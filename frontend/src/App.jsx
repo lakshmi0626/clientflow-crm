@@ -36,6 +36,7 @@ const [taskStatus, setTaskStatus] = useState('All statuses')
 const [taskPriority, setTaskPriority] = useState('All priorities')
   const [busy, setBusy] = useState(true)
   const [notice, setNotice] = useState('')
+  const [notificationOpen, setNotificationOpen] = useState(false)
   const [error, setError] = useState('')
 
   const refresh = useCallback(async () => {
@@ -59,6 +60,55 @@ const [taskPriority, setTaskPriority] = useState('All priorities')
     const matchesQuery = [l.name, l.company, l.email, l.owner].join(' ').toLowerCase().includes(query.toLowerCase())
     return matchesQuery && (filter === 'All stages' || l.status === filter)
   }), [leads, query, filter])
+
+  const notificationDates = (() => {
+    const now = new Date()
+
+    const formatDate = date =>
+      [
+        date.getFullYear(),
+        String(date.getMonth() + 1).padStart(2, '0'),
+        String(date.getDate()).padStart(2, '0')
+      ].join('-')
+
+    const today = formatDate(now)
+    const nextWeekDate = new Date(now)
+    nextWeekDate.setDate(nextWeekDate.getDate() + 7)
+
+    return {
+      today,
+      nextWeek: formatDate(nextWeekDate)
+    }
+  })()
+
+  const notificationTasks = tasks
+    .filter(task => {
+      const dueDate = (task.dueDate || '').slice(0, 10)
+
+      return (
+        dueDate &&
+        dueDate <= notificationDates.nextWeek &&
+        (task.status || 'Pending') !== 'Completed'
+      )
+    })
+    .map(task => {
+      const dueDate = task.dueDate.slice(0, 10)
+
+      let type = 'Upcoming'
+
+      if (dueDate < notificationDates.today) {
+        type = 'Overdue'
+      } else if (dueDate === notificationDates.today) {
+        type = 'Due Today'
+      }
+
+      return { ...task, notificationType: type }
+    })
+    .sort((a, b) =>
+      (a.dueDate || '').localeCompare(b.dueDate || '')
+    )
+
+  const notificationCount = notificationTasks.length
 
   async function createLead(event) {
     event.preventDefault()
@@ -147,7 +197,97 @@ const [taskPriority, setTaskPriority] = useState('All priorities')
       <header className="topbar">
         <button className="icon-btn menu-btn" onClick={() => setMobileNav(true)}><Menu size={20}/></button>
         <div className="breadcrumbs"><span>Workspace</span><span className="crumb-slash">/</span><strong>{page}</strong></div>
-        <div className="top-actions"><div className="search-global"><Search size={16}/><input placeholder="Search anything..." value={query} onChange={e => setQuery(e.target.value)}/><kbd>⌘ K</kbd></div><button className="icon-btn notification-btn" onClick={() => setPage('Follow-ups')} aria-label="Notifications"><Bell size={18}/><i/></button><div className="top-avatar">CA</div></div>
+        <div className="top-actions"><div className="search-global"><Search size={16}/><input placeholder="Search anything..." value={query} onChange={e => setQuery(e.target.value)}/><kbd>⌘ K</kbd></div>
+  <div className="notification-wrapper">
+    <button
+      className="icon-btn notification-btn"
+      onClick={() => setNotificationOpen(open => !open)}
+      aria-label="Notifications"
+      aria-expanded={notificationOpen}
+    >
+      <Bell size={18} />
+      {notificationCount > 0 && (
+        <span className="notification-count">
+          {notificationCount > 99 ? '99+' : notificationCount}
+        </span>
+      )}
+    </button>
+
+    {notificationOpen && (
+      <div className="notification-panel">
+        <div className="notification-panel-header">
+          <div>
+            <strong>Notifications</strong>
+            <p>Follow-up reminders</p>
+          </div>
+
+          <button
+            className="icon-btn"
+            onClick={() => setNotificationOpen(false)}
+            aria-label="Close notifications"
+          >
+            <X size={17} />
+          </button>
+        </div>
+
+        <div className="notification-list">
+          {notificationTasks.map(task => (
+            <button
+              className="notification-item"
+              key={task.id}
+              onClick={() => {
+                setTaskQuery(task.title)
+                setTaskStatus('All statuses')
+                setTaskPriority('All priorities')
+                setPage('Follow-ups')
+                setNotificationOpen(false)
+              }}
+            >
+              <span
+                className={`notification-indicator ${
+                  task.notificationType === 'Overdue'
+                    ? 'urgent'
+                    : task.notificationType === 'Due Today'
+                      ? 'today'
+                      : 'upcoming'
+                }`}
+              />
+
+              <span className="notification-item-content">
+                <strong>{task.title}</strong>
+                <span>{task.customerName || 'Customer'}</span>
+                <span className="notification-item-meta">
+                  {task.notificationType} · {task.dueDate.slice(0, 10)}
+                </span>
+              </span>
+            </button>
+          ))}
+
+          {notificationTasks.length === 0 && (
+            <div className="notification-empty">
+              <Check size={22} />
+              <strong>You're all caught up!</strong>
+              <span>No upcoming follow-ups to remind you about.</span>
+            </div>
+          )}
+        </div>
+
+        <button
+          className="notification-footer"
+          onClick={() => {
+            setPage('Follow-ups')
+            setTaskQuery('')
+            setTaskStatus('All statuses')
+            setTaskPriority('All priorities')
+            setNotificationOpen(false)
+          }}
+        >
+          View all follow-ups
+        </button>
+      </div>
+    )}
+  </div>
+<div className="top-avatar">CA</div></div>
       </header>
 
       <div className="content">
